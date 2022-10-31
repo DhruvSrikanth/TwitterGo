@@ -1,6 +1,7 @@
 package queue
 
 type Request struct {
+	message map[string]interface{}
 }
 
 // LockfreeQueue represents a FIFO structure with operations to enqueue

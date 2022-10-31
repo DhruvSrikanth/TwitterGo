@@ -34,7 +34,7 @@ func (s *Semaphore) Down() {
 	// We know capacity is non-negative
 	// So spin until it is positive
 	// Capacity = 0 means that the shared resource is in use to its full capacity
-	for s.capacity == 0 {
+	if s.capacity == 0 {
 		// Suspend goroutine and release lock
 		s.cond.Wait()
 	}
