@@ -44,7 +44,6 @@ func main() {
 		Usage()
 		return
 	}
-
 	// Run the server
 	server.Run(config)
 

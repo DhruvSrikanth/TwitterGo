@@ -1,0 +1,8 @@
+{"command": "ADD", "id": 1, "body": "just setting up my twttr", "timestamp": 43242423}
+{"command": "ADD", "id": 2, "body": "Another post to add", "timestamp": 43242421}
+{"command": "REMOVE", "id": 3, "timestamp": 43242423}
+{"command": "REMOVE", "id": 4, "timestamp": 43242420}
+{"command": "CONTAINS", "id": 5, "timestamp": 43242423}
+{"command": "CONTAINS", "id": 6, "timestamp": 43242421}
+{"command": "FEED", "id": 7}
+{"command": "DONE"}

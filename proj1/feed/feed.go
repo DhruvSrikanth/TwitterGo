@@ -1,7 +1,6 @@
 package feed
 
 import (
-	"fmt"
 	"proj1/lock"
 )
 
@@ -11,7 +10,7 @@ type Feed interface {
 	Add(body string, timestamp float64)
 	Remove(timestamp float64) bool
 	Contains(timestamp float64) bool
-	Display()
+	Show() []interface{}
 }
 
 // feed is the internal representation of a user's twitter feed (hidden from outside packages)
@@ -160,19 +159,31 @@ func (f *feed) Contains(timestamp float64) bool {
 }
 
 // Function to display the entire feed
-func (f *feed) Display() {
+func (f *feed) Show() []interface{} {
 	// lock the feed
 	f.lock.RLock()
 
 	var currPost *post
 	currPost = f.start
 
+	var displayFeed []interface{}
+
 	// Print every post in the feed
 	for currPost != nil {
-		fmt.Printf("\n--x--Post:\n%s\n\nMade at - %f--x--\n", currPost.body, currPost.timestamp)
+		// Create post to display
+		displayPost := make(map[string]interface{})
+
+		displayPost["body"] = currPost.body
+		displayPost["timestamp"] = currPost.timestamp
+
+		// Add post to the feed
+		displayFeed = append(displayFeed, displayPost)
+
 		currPost = currPost.next
 	}
 
 	// Unlock the feed
 	f.lock.RUnlock()
+
+	return displayFeed
 }
