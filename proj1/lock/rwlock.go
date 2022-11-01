@@ -24,32 +24,45 @@ func NewRWLock() *RWLock {
 
 // Lock locks rw for writing. If the lock is already locked for reading or writing, Lock blocks until the lock is available.
 func (lock *RWLock) Lock() {
+	// Lock the semaphore
 	lock.sem.Down()
+	// Wait until there are no readers
 	for lock.writingState {
 		lock.sem.Up()
 		lock.sem.Down()
 	}
+	// Someone is writing, wait until they are done
 	lock.writingState = true
+	// Unlock the semaphore
 	lock.sem.Up()
 }
 
 // Unlock unlocks rw for writing.
 func (lock *RWLock) Unlock() {
+	// Lock the semaphore
 	lock.sem.Down()
+	// Someone is done writing
 	lock.writingState = false
+	// Unlock the semaphore
 	lock.sem.Up()
 }
 
 // RLock locks rw for reading.
 func (lock *RWLock) RLock() {
+	// Lock the semaphore
 	lock.sem.Down()
+	// Increment the number of readers
 	lock.nReaders++
+	// Unlock the semaphore
 	lock.sem.Up()
 }
 
 // RUnlock undoes a single RLock call; it does not affect other simultaneous readers.
 func (lock *RWLock) RUnlock() {
+	// Lock the semaphore
 	lock.sem.Down()
+	// Decrement the number of readers
 	lock.nReaders--
+	// Unlock the semaphore
 	lock.sem.Up()
 }

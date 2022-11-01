@@ -15,6 +15,8 @@ func Usage() {
 
 func main() {
 	// Create the streaming encoder and decoder
+	// Encoder pushes to stdout
+	// Decoder pulls from stdin
 	encoder := json.NewEncoder(os.Stdout)
 	decoder := json.NewDecoder(os.Stdin)
 
@@ -27,9 +29,11 @@ func main() {
 
 	// Error checking was not asked for but it I felt like after the rest of the code was done, it would be nice to include it.
 	if len(args) == 0 {
+		// If no arguments are given, default to the sequential version
 		mode = "s"
 		config = server.Config{Encoder: encoder, Decoder: decoder, Mode: mode}
 	} else if len(args) == 1 {
+		// If one argument is given and it is a number, then run in parallel mode for those many consumers
 		mode = "p"
 		nConsumers := args[0]
 		numConsumers, err := strconv.Atoi(nConsumers)
@@ -44,6 +48,7 @@ func main() {
 		Usage()
 		return
 	}
+
 	// Run the server
 	server.Run(config)
 

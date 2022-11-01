@@ -28,6 +28,7 @@ type SharedContext struct {
 // information provided and only returns when the server is fully
 // shutdown.
 func Run(config Config) {
+	// Get the twitter feed
 	feed := feed.NewFeed()
 	if config.Mode == "s" {
 		// Run the sequential version
@@ -41,6 +42,7 @@ func Run(config Config) {
 
 // sequentialServer runs the server in sequential mode
 func sequentialServer(config Config, feed feed.Feed) {
+	// Loop until we get a DONE command
 	for {
 		var message map[string]interface{}
 
@@ -49,7 +51,9 @@ func sequentialServer(config Config, feed feed.Feed) {
 		if err != nil {
 			break
 		} else {
+			// Wrap the request as a task
 			request := queue.Request{Message: message}
+			// Process the request
 			processRequest(config, feed, request)
 		}
 	}
@@ -70,29 +74,34 @@ func parallelServer(config Config, feed feed.Feed, q *queue.LockFreeQueue) {
 		go consumer(config, feed, q, &context)
 	}
 
-	// producer
+	// producer to add requests to the queue
 	producer(config, q, &context)
 
 }
 
 // consumer processes requests from the queue
 func consumer(config Config, feed feed.Feed, q *queue.LockFreeQueue, context *SharedContext) {
+	// Loop until the DONE command is received
 	for {
 		if context.done {
+			// If the DONE command is received, exit
 			break
 		}
 
 		// Wait for a request
 		request := q.Dequeue()
 
+		// If the request is nil, wait for a signal
 		if request == nil {
 			context.cond.Wait()
 		} else if request.Message["command"] == "DONE" {
+			// If the DONE command is receieved, updated the shared context and tell all threads
 			context.mutex.Lock()
 			context.done = true
 			context.mutex.Unlock()
 			context.cond.Broadcast()
 		} else {
+
 			// Process the request
 			processRequest(config, feed, *request)
 		}
@@ -101,19 +110,22 @@ func consumer(config Config, feed feed.Feed, q *queue.LockFreeQueue, context *Sh
 
 // producer add requests to the queue
 func producer(config Config, q *queue.LockFreeQueue, context *SharedContext) {
+	// Loop until context.done is true
 	for {
 		if context.done {
 			break
 		}
 
+		// Message to decode into
 		var message map[string]interface{}
 
 		// Decode the request
 		err := config.Decoder.Decode(&message)
 
 		if err != nil {
-			// fmt.Printf("Error: %v while decoding request!\n", err)
+
 		} else {
+			// Wrap the request as a task
 			request := queue.Request{Message: message}
 			// Add the request to the queue
 			q.Enqueue(&request)
@@ -133,15 +145,19 @@ func processRequest(config Config, feed feed.Feed, request queue.Request) {
 	} else {
 		command := request.Message["command"].(string)
 		if !contains(acceptedCommands, command) && command != "DONE" {
+			// This is an invalid command
 			return
 		} else if !contains(acceptedCommands, command) && command == "DONE" {
+			// Return since we recieved the DONE command
 			return
 		} else {
-			// response
+			// Get the response as a message
 			var response queue.Request
 			// This is needed for initialization
 			response.Message = make(map[string]interface{})
+
 			var success bool
+
 			// Process the request
 			switch command {
 			case "ADD":
