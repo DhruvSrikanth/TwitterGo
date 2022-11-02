@@ -1,7 +1,7 @@
 import subprocess
 import matplotlib.pyplot as plt
 
-def get_sequential_times(problem_sizes: list, average_over: int, run_command: str) -> dict:
+def get_sequential_times(problem_sizes, average_over, run_command):
     '''
     Get the sequential runtimes for the benchmark graphs
     Args:
@@ -28,7 +28,7 @@ def get_sequential_times(problem_sizes: list, average_over: int, run_command: st
         print('--------------------------------')
     return sequential_times
 
-def get_parallel_times(problem_sizes: list, thread_nums: list, average_over: int, run_command: str) -> dict:
+def get_parallel_times(problem_sizes, thread_nums, average_over, run_command):
     '''
     Get the parallel runtimes for the benchmark graphs
     Args:
@@ -59,7 +59,7 @@ def get_parallel_times(problem_sizes: list, thread_nums: list, average_over: int
         print('--------------------------------')
     return parallel_times
 
-def get_speedup(sequential_time: float, parallel_time: float) -> float:
+def get_speedup(sequential_time, parallel_time):
     '''
     Get the speedup of a parallel run compared to a sequential run.
     Args:
@@ -70,7 +70,7 @@ def get_speedup(sequential_time: float, parallel_time: float) -> float:
     '''
     return sequential_time / parallel_time
 
-def get_speedups(sequential_times: dict, parallel_times: dict) -> dict:
+def get_speedups(sequential_times, parallel_times):
     '''
     Get the speedups of the parallel runs compared to the sequential runs.
     Args:
@@ -85,7 +85,7 @@ def get_speedups(sequential_times: dict, parallel_times: dict) -> dict:
             speedups[problem_size][thread_num] = get_speedup(sequential_times[problem_size], parallel_times[problem_size][thread_num])
     return speedups
 
-def plot_speedups(num_threads: list, speedups: dict):
+def plot_speedups(num_threads, speedups):
     '''
     Plot the speedups for each benchmark.
     Args:
