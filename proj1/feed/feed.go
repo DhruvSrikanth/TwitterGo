@@ -61,6 +61,15 @@ func (f *feed) Add(body string, timestamp float64) {
 		return
 	}
 
+	// Check the first post
+	if f.start.timestamp < timestamp {
+		addPost.next = f.start
+		f.start = addPost
+		// Unlock the feed
+		f.lock.Unlock()
+		return
+	}
+
 	var currPost *post
 	currPost = f.start
 
@@ -168,7 +177,6 @@ func (f *feed) Show() []interface{} {
 
 	var displayFeed []interface{}
 
-	// Print every post in the feed
 	for currPost != nil {
 		// Create post to display
 		displayPost := make(map[string]interface{})

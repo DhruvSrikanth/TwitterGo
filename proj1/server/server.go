@@ -5,6 +5,7 @@ import (
 	"proj1/feed"
 	"proj1/queue"
 	"sync"
+	"sync/atomic"
 )
 
 type Config struct {
@@ -19,9 +20,13 @@ type Config struct {
 }
 
 type SharedContext struct {
-	mutex *sync.Mutex
-	cond  *sync.Cond
-	done  bool
+	mutex       *sync.Mutex          // Mutex to use for locking
+	cond        *sync.Cond           // Condition variable to use for waiting
+	group       *sync.WaitGroup      // Wait group to use for waiting for consumers
+	done        bool                 // Flag to indicate if the producer has seen the DONE command
+	feed        *feed.Feed           // The twitter feed
+	queue       *queue.LockFreeQueue // The queue of requests
+	queuedTasks int64                // The number of tasks currently queued by the producer
 }
 
 // Run starts up the twitter server based on the configuration
@@ -49,8 +54,13 @@ func sequentialServer(config Config, feed feed.Feed) {
 		// Decode the request
 		err := config.Decoder.Decode(&message)
 		if err != nil {
-			break
+			return
 		} else {
+			// Exit after seeing the DONE command
+			if message["command"] == "DONE" {
+				break
+			}
+
 			// Wrap the request as a task
 			request := queue.Request{Message: message}
 			// Process the request
@@ -62,75 +72,90 @@ func sequentialServer(config Config, feed feed.Feed) {
 // parallelServer runs the server in parallel mode
 func parallelServer(config Config, feed feed.Feed, q *queue.LockFreeQueue) {
 	// Shared context
+	group := sync.WaitGroup{}
 	mutex := sync.Mutex{}
 	cond := sync.NewCond(&mutex)
 	context := SharedContext{
 		mutex: &mutex,
 		cond:  cond,
+		group: &group,
+		done:  false,
+		feed:  &feed,
+		queue: q,
 	}
 
 	// Spawn the consumers
 	for i := 0; i < config.ConsumersCount; i++ {
-		go consumer(config, feed, q, &context)
+		context.group.Add(1)
+		go consumer(config, &context, i)
 	}
 
 	// producer to add requests to the queue
-	producer(config, q, &context)
+	producer(config, &context)
+	context.group.Wait()
 
 }
 
 // consumer processes requests from the queue
-func consumer(config Config, feed feed.Feed, q *queue.LockFreeQueue, context *SharedContext) {
+func consumer(config Config, context *SharedContext, i int) {
 	// Loop until the DONE command is received
 	for {
-		if context.done {
-			// If the DONE command is received, exit
-			break
+		context.mutex.Lock()
+		// If the queue is empty but the producer has not seen the done command, wait
+		if context.queuedTasks == 0 && !context.done {
+			context.cond.Wait()
+		} else if context.queuedTasks == 0 && context.done {
+			// If the queue is empty and the producer has seen the done command, exit
+			context.mutex.Unlock()
+			context.group.Done()
+			return
 		}
 
-		// Wait for a request
-		request := q.Dequeue()
+		// Get the next request from the queue
+		request := context.queue.Dequeue()
+		context.mutex.Unlock()
 
-		// If the request is nil, wait for a signal
-		if request == nil {
-			context.cond.Wait()
-		} else if request.Message["command"] == "DONE" {
-			// If the DONE command is receieved, updated the shared context and tell all threads
-			context.mutex.Lock()
-			context.done = true
-			context.mutex.Unlock()
-			context.cond.Broadcast()
-		} else {
+		// Process the request
+		processRequest(config, *context.feed, *request)
+		atomic.AddInt64(&context.queuedTasks, int64(-1))
 
-			// Process the request
-			processRequest(config, feed, *request)
+		// If the producer has seen the done command and the queue is empty, exit
+		if context.done && context.queuedTasks <= 0 {
+			context.group.Done()
+			return
 		}
 	}
 }
 
 // producer add requests to the queue
-func producer(config Config, q *queue.LockFreeQueue, context *SharedContext) {
+func producer(config Config, context *SharedContext) {
 	// Loop until context.done is true
 	for {
-		if context.done {
-			break
-		}
-
 		// Message to decode into
 		var message map[string]interface{}
-
 		// Decode the request
 		err := config.Decoder.Decode(&message)
-
 		if err != nil {
-
+			return
 		} else {
-			// Wrap the request as a task
-			request := queue.Request{Message: message}
-			// Add the request to the queue
-			q.Enqueue(&request)
-			// Notify 1 consumer if there are any waiting
-			context.cond.Signal()
+			// If the command is DONE, set context.done to true
+			// And notify the consumers
+			// Add return for the producer
+			if message["command"] == "DONE" {
+				context.done = true
+				// Notify all consumers
+				context.cond.Broadcast()
+				return
+			} else {
+				// Wrap the request as a task
+				request := queue.Request{Message: message}
+				// Add the request to the queue
+				context.queue.Enqueue(&request)
+				// Increment the number of queued tasks
+				atomic.AddInt64(&context.queuedTasks, int64(1))
+				// Notify 1 consumer if there are any waiting
+				context.cond.Signal()
+			}
 		}
 	}
 }
@@ -155,6 +180,7 @@ func processRequest(config Config, feed feed.Feed, request queue.Request) {
 			var response queue.Request
 			// This is needed for initialization
 			response.Message = make(map[string]interface{})
+			response.Message["id"] = request.Message["id"].(float64)
 
 			var success bool
 
@@ -175,9 +201,9 @@ func processRequest(config Config, feed feed.Feed, request queue.Request) {
 				response.Message["feed"] = feed.Show()
 			}
 
-			// Create the response
-			response.Message["success"] = success
-			response.Message["id"] = request.Message["id"].(float64)
+			if command != "FEED" {
+				response.Message["success"] = success
+			}
 
 			// Encode the response
 			err := config.Encoder.Encode(&response.Message)
