@@ -1,11 +1,11 @@
 #!/bin/bash
 #
-#SBATCH --mail-user=CNETID@cs.uchicago.edu
+#SBATCH --mail-user=dhruvsrikanth@uchicago.edu
 #SBATCH --mail-type=ALL
 #SBATCH --job-name=proj1_benchmark 
 #SBATCH --output=./slurm/out/%j.%N.stdout
 #SBATCH --error=./slurm/out/%j.%N.stderr
-#SBATCH --chdir=ABSOLUTE_PATH_TO_PROJ1_GRADER_DIRECTORY
+#SBATCH --chdir=/home/dhruvsrikanth/temp/parallel_proj_1/project_1/proj1/grader
 #SBATCH --partition=debug 
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
