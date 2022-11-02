@@ -1,2 +1,2 @@
-# proj1
-The starter code for project 1
+# Project: Twitter Feed (Modelled as a Bounded-Buffer Problem)
+
