@@ -34,20 +34,20 @@ func (queue *LockFreeQueue) Enqueue(task *Request) {
 	node_ := &node{value: *task}
 	for {
 		// Traverse the queue
-		tail := (*node)(atomic.LoadPointer(&queue.tail))
-		next := (*node)(atomic.LoadPointer(&tail.next))
+		tailNode := (*node)(atomic.LoadPointer(&queue.tail))
+		nextNode := (*node)(atomic.LoadPointer(&tailNode.next))
 		// If the tail is the same as the current tail
-		if tail == (*node)(atomic.LoadPointer(&queue.tail)) {
+		if tailNode == (*node)(atomic.LoadPointer(&queue.tail)) {
 			// If the tail is the last node in the queue
-			if next == nil {
+			if nextNode == nil {
 				// Try to add the node to the queue
-				if atomic.CompareAndSwapPointer(&tail.next, unsafe.Pointer(next), unsafe.Pointer(node_)) {
-					atomic.CompareAndSwapPointer(&queue.tail, unsafe.Pointer(tail), unsafe.Pointer(node_))
+				if atomic.CompareAndSwapPointer(&tailNode.next, unsafe.Pointer(nextNode), unsafe.Pointer(node_)) {
+					atomic.CompareAndSwapPointer(&queue.tail, unsafe.Pointer(tailNode), unsafe.Pointer(node_))
 					return
 				}
 			} else {
 				// If the tail is not the last node in the queue
-				atomic.CompareAndSwapPointer(&queue.tail, unsafe.Pointer(tail), unsafe.Pointer(next))
+				atomic.CompareAndSwapPointer(&queue.tail, unsafe.Pointer(tailNode), unsafe.Pointer(nextNode))
 			}
 		}
 	}
@@ -58,22 +58,22 @@ func (queue *LockFreeQueue) Enqueue(task *Request) {
 func (queue *LockFreeQueue) Dequeue() *Request {
 	for {
 		// Traverse the queue
-		head := (*node)(atomic.LoadPointer(&queue.head))
-		tail := (*node)(atomic.LoadPointer(&queue.tail))
-		next := (*node)(atomic.LoadPointer(&head.next))
+		headNode := (*node)(atomic.LoadPointer(&queue.head))
+		tailNode := (*node)(atomic.LoadPointer(&queue.tail))
+		nextNode := (*node)(atomic.LoadPointer(&headNode.next))
 		// If the head is the same as the current head
-		if head == (*node)(atomic.LoadPointer(&queue.head)) {
+		if headNode == (*node)(atomic.LoadPointer(&queue.head)) {
 			// If the head is the same as the tail
-			if head == tail {
+			if headNode == tailNode {
 				// If the queue is empty
-				if next == nil {
+				if nextNode == nil {
 					return &Request{Message: nil}
 				}
-				atomic.CompareAndSwapPointer(&queue.tail, unsafe.Pointer(tail), unsafe.Pointer(next))
+				atomic.CompareAndSwapPointer(&queue.tail, unsafe.Pointer(tailNode), unsafe.Pointer(nextNode))
 			} else {
 				// If the head is not the same as the tail
-				request := next.value
-				if atomic.CompareAndSwapPointer(&queue.head, unsafe.Pointer(head), unsafe.Pointer(next)) {
+				request := nextNode.value
+				if atomic.CompareAndSwapPointer(&queue.head, unsafe.Pointer(headNode), unsafe.Pointer(nextNode)) {
 					return &request
 				}
 			}
