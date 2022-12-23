@@ -1,6 +1,7 @@
 package feed
 
 import (
+	"math"
 	"proj1/lock"
 )
 
@@ -17,8 +18,9 @@ type Feed interface {
 // You CAN add to this structure but you cannot remove any of the original fields. You must use
 // the original fields in your implementation. You can assume the feed will not have duplicate posts
 type feed struct {
-	start *post        // a pointer to the beginning post
-	lock  *lock.RWLock // a pointer to the read-write lock
+	head *post // a pointer to the beginning post
+	tail *post // a pointer to the last post
+	lock *lock.RWLock
 }
 
 // post is the internal representation of a post on a user's twitter feed (hidden from outside packages)
@@ -27,18 +29,24 @@ type feed struct {
 type post struct {
 	body      string  // the text of the post
 	timestamp float64 // Unix timestamp of the post
+	removed   bool    // used to determine if a post has been removed
 	next      *post   // the next post in the feed
+	lock      *lock.RWLock
 }
 
 // NewPost creates and returns a new post value given its body and timestamp
 func newPost(body string, timestamp float64, next *post) *post {
-	return &post{body, timestamp, next}
+	rwLock := lock.NewRWLock()
+	return &post{body: body, timestamp: timestamp, next: next, removed: false, lock: rwLock}
 }
 
 // NewFeed creates a empy user feed
 func NewFeed() Feed {
+	head := newPost("", math.MaxFloat64, nil)
+	tail := newPost("", -math.MaxFloat64, nil)
+	head.next = tail
 	rwLock := lock.NewRWLock()
-	return &feed{start: nil, lock: rwLock}
+	return &feed{head, tail, rwLock}
 }
 
 // Add inserts a new post to the feed. The feed is always ordered by the timestamp where
@@ -46,134 +54,113 @@ func NewFeed() Feed {
 // recent timestamp, etc. You may need to insert a new post somewhere in the feed because
 // the given timestamp may not be the most recent.
 func (f *feed) Add(body string, timestamp float64) {
-	// Create the post
-	addPost := newPost(body, timestamp, nil)
+	for {
+		prev := f.head
+		curr := f.head.next
 
-	// Lock the feed
-	f.lock.Lock()
+		// Iterate till the end or when the timestamp is less than the current timestamp (place to insert)
+		for curr != nil && curr.timestamp > timestamp {
+			prev = curr
+			curr = curr.next
+		}
 
-	// Figure out where to insert the node
-	// If the feed is empty, insert the post at the beginning
-	if f.start == nil {
-		f.start = addPost
-		// Unlock the feed
-		f.lock.Unlock()
-		return
+		// Lock the previous and current posts
+		prev.lock.Lock()
+		curr.lock.Lock()
+
+		// Check the posts
+		if validate(prev, curr) {
+			// If the timestamp is the same as the current timestamp, then replace the body
+			if curr.timestamp == timestamp {
+				curr.body = body
+				// Unlock the posts and return
+				prev.lock.Unlock()
+				curr.lock.Unlock()
+				return
+			} else {
+				// We have found the place to insert the new post
+				newPost := newPost(body, timestamp, curr)
+				prev.next = newPost
+
+				// Unlock the posts and return
+				prev.lock.Unlock()
+				curr.lock.Unlock()
+				return
+			}
+		}
+
+		// Unlock the posts
+		curr.lock.Unlock()
+		prev.lock.Unlock()
 	}
-
-	// Check the first post
-	if f.start.timestamp < timestamp {
-		addPost.next = f.start
-		f.start = addPost
-		// Unlock the feed
-		f.lock.Unlock()
-		return
-	}
-
-	var currPost *post
-	currPost = f.start
-
-	// Find the post with a timestamp less than the given timestamp
-	for (currPost.next != nil) && (currPost.next.timestamp > timestamp) {
-		currPost = currPost.next
-	}
-
-	// If the post is at the end of the feed, insert the post at the end
-	if currPost.next == nil {
-		currPost.next = addPost
-		// Unlock the feed
-		f.lock.Unlock()
-		return
-	}
-
-	// Insert the post
-	addPost.next = currPost.next
-	currPost.next = addPost
-
-	// Unlock the feed
-	f.lock.Unlock()
-
 }
 
 // Remove deletes the post with the given timestamp. If the timestamp
 // is not included in a post of the feed then the feed remains
 // unchanged. Return true if the deletion was a success, otherwise return false
 func (f *feed) Remove(timestamp float64) bool {
-	// Lock the feed
-	f.lock.Lock()
+	for {
+		prev := f.head
+		curr := f.head.next
+		// Iterate till the end or when the timestamp is less than the current timestamp (place that the post should be)
+		for curr != nil && curr.timestamp > timestamp {
+			prev = curr
+			curr = curr.next
+		}
 
-	// If the feed is empty, return false
-	if f.start == nil {
-		// Unlock the feed
-		f.lock.Unlock()
+		// If the timestamp to remove cannot be found, return false
+		if curr == nil || curr.timestamp != timestamp {
+			return false
+		}
 
-		return false
-	}
+		// Lock the previous and current posts
+		prev.lock.Lock()
+		curr.lock.Lock()
 
-	var currPost *post
-	currPost = f.start
-
-	// Check if the post is at the beginning of the feed
-	if currPost.timestamp == timestamp {
-		f.start = currPost.next
-		// Unlock the feed
-		f.lock.Unlock()
-
-		return true
-	}
-
-	// Find the post with the given timestamp
-	for currPost.next != nil {
-		if currPost.next.timestamp == timestamp {
-			currPost.next = currPost.next.next
-			// Unlock the feed
-			f.lock.Unlock()
-
+		// Check the posts and if this is the post to remove
+		if validate(prev, curr) && curr.timestamp == timestamp {
+			// Remove the post
+			curr.removed = true
+			prev.next = curr.next
+			curr.lock.Unlock()
+			prev.lock.Unlock()
 			return true
 		}
-		currPost = currPost.next
+
+		// Unlock the posts
+		curr.lock.Unlock()
+		prev.lock.Unlock()
 	}
-
-	// Unlock the feed
-	f.lock.Unlock()
-
-	// Havent found the post
-	return false
-
 }
 
 // Contains determines whether a post with the given timestamp is
 // inside a feed. The function returns true if there is a post
 // with the timestamp, otherwise, false.
 func (f *feed) Contains(timestamp float64) bool {
-	// lock the feed
-	f.lock.RLock()
-
-	// Find the post with the given timestamp
-	var currPost *post
-	currPost = f.start
-
-	for currPost != nil {
-		if currPost.timestamp == timestamp {
-			// Unlock the feed
-			f.lock.RUnlock()
-			return true
-		}
-		currPost = currPost.next
+	curr := f.head
+	// Iterate till the end or when the timestamp is less than the current timestamp (place that the post should be)
+	for curr != nil && curr.timestamp > timestamp {
+		curr = curr.next
 	}
-	// Unlock the feed
-	f.lock.RUnlock()
+	// If the timestamp cannot be found, return false
+	if curr == nil || curr.timestamp != timestamp {
+		return false
+	}
+	// If the timestamp is found, return true
+	return true
+}
 
-	return false
+func validate(prev, curr *post) bool {
+	return !prev.removed && !curr.removed && prev.next == curr
 }
 
 // Function to display the entire feed
 func (f *feed) Show() []interface{} {
-	// lock the feed
+
 	f.lock.RLock()
 
 	var currPost *post
-	currPost = f.start
+	currPost = f.head.next
 
 	var displayFeed []interface{}
 
@@ -190,7 +177,10 @@ func (f *feed) Show() []interface{} {
 		currPost = currPost.next
 	}
 
-	// Unlock the feed
+	if len(displayFeed) > 0 {
+		displayFeed = displayFeed[:len(displayFeed)-1]
+	}
+
 	f.lock.RUnlock()
 
 	return displayFeed
