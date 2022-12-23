@@ -68,7 +68,7 @@ foo@bar:~$ sbatch benchmark.sh
 
 Make sure to create the `slurm/out` directory inside `benchmark` directory and check the `.stdout` file for the output timings for benchmarking. The problems sizes are as follows - xsmall, small, medium, large, xlarge. This is done over a sequential run, and using 2, 4, 6, 8, and 12 threads to compute speedups. The speedups for each thread case for each problem size is then plotted and this is the resulting graph - 
 
-![benchmarking](./speedup.png)
+![benchmarking](./proj1/benchmark/speedup.png)
 
 
 The graph will be created within the `benchmark` directory. The computation of the speedups along with the storing of each of the benchmarking timings and the plotting of the stored data happens by using `benchmark_graph.py` which is called from within `benchmark.sh` (both reside in the `benchmark` directory).
